@@ -1,0 +1,28 @@
+{
+  "name": "articlepulse",
+  "version": "1.0.0",
+  "description": "**Statut** : 🚧 En attente | ⏳ Prototype finalisé le 09/05/2025",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HugoJanow/ArticlePulse.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/HugoJanow/ArticlePulse/issues"
+  },
+  "homepage": "https://github.com/HugoJanow/ArticlePulse#readme",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.3.0"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.5.0",
+    "hardhat": "^2.24.3"
+  }
+}
