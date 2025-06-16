@@ -11,10 +11,11 @@ Ce projet illustre une chaîne complète de distribution sécurisée et décentr
 ## 🎯 Objectifs
 
 - Démontrer un système de paiement à l’unité pour la lecture d’articles numériques.
-- Déployer et interagir avec un smart contract Ethereum sur Goerli.
+- Déployer et interagir avec un smart contract Ethereum sur Sepolia
 - Sécuriser les contenus via chiffrement AES-GCM.
 - Stocker les contenus chiffrés sur IPFS ou localement.
 - Réaliser un prototype **full-stack** intégrant smart contracts, backend et frontend.
+- Utiliser un faucet Sepolia pour approvisionner le compte déployeur.
 
 ## 🛠️ Technologies utilisées
 
@@ -43,6 +44,14 @@ Ce projet illustre une chaîne complète de distribution sécurisée et décentr
 - 💳 Paiement on-chain via ethers.js en jetons ERC-20.
 - 🔓 Déverrouillage de la clé AES suite à la transaction.
 - 📦 Stockage et récupération des contenus via IPFS.
+
+## 🚀 Lancer le serveur backend
+
+- ```bash
+- cd server
+- npm install
+- npm start
+- ```
 
 ## 👨‍💻 Étudiants impliqués
 
