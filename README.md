@@ -4,7 +4,7 @@
 
 ## 📖 Description
 
-**ArticlePulse** est une plateforme de micro-paiements décentralisée qui permet à un lecteur de payer un article à l’unité à l’aide d’un jeton ERC-20 (réseau testnet Goerli). Une fois le paiement effectué, l'utilisateur peut immédiatement déverrouiller et lire un article protégé par chiffrement.
+**ArticlePulse** est une plateforme de micro-paiements décentralisée qui permet à un lecteur de payer un article à l’unité à l’aide d’un jeton ERC-20 (réseau testnet Sepolia). Une fois le paiement effectué, l'utilisateur peut immédiatement déverrouiller et lire un article protégé par chiffrement.
 
 Ce projet illustre une chaîne complète de distribution sécurisée et décentralisée de contenu, sans abonnement ni intermédiaire.
 
@@ -30,7 +30,7 @@ Ce projet illustre une chaîne complète de distribution sécurisée et décentr
 ### Blockchain
 - Solidity
 - Hardhat
-- ERC-20 sur le réseau **Goerli**
+- ERC-20 sur le réseau **Sepolia**
 
 ### Sécurité & Stockage
 - AES-GCM pour le chiffrement des articles
