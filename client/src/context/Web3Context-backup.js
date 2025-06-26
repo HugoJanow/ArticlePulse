@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback, useMemo, useRef, useContext } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { ethers } from 'ethers';
 import Web3Modal from 'web3modal';
 import config from '../config';
@@ -23,10 +23,6 @@ export const Web3Provider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Cache pour éviter les appels répétés
-  const contractAddressesCache = useRef(null);
-  const balanceCache = useRef({});
-
   // Initialize web3modal - wrapped in useMemo to prevent recreation on each render
   const web3Modal = useMemo(() => new Web3Modal({
     cacheProvider: true,
@@ -44,60 +40,24 @@ export const Web3Provider = ({ children }) => {
       setBalance(null);
       setTokenContract(null);
       setArticlePurchaseContract(null);
-      contractAddressesCache.current = null;
-      balanceCache.current = {};
     } catch (error) {
       console.error('Failed to disconnect wallet:', error);
     }
   }, [web3Modal]);
 
-  // Get contract addresses with caching
-  const getContractAddresses = useCallback(async () => {
-    if (contractAddressesCache.current) {
-      return contractAddressesCache.current;
-    }
-    
-    try {
-      const addresses = await BlockchainService.getContractAddresses();
-      contractAddressesCache.current = addresses;
-      return addresses;
-    } catch (error) {
-      console.error('Failed to fetch contract addresses:', error);
-      throw error;
-    }
-  }, []);
-
-  // Update token balance with caching
+  // Update token balance - defined early so it can be used in dependencies
   const updateBalance = useCallback(async (address) => {
     if (!address) return;
     
-    const cacheKey = `${address}_${tokenContract?.address || 'no-contract'}`;
-    const now = Date.now();
-    
-    // Use cache if less than 10 seconds old
-    if (balanceCache.current[cacheKey] && 
-        now - balanceCache.current[cacheKey].timestamp < 10000) {
-      setBalance(balanceCache.current[cacheKey].balance);
-      return;
-    }
-    
     try {
-      let balanceValue;
-      
       if (tokenContract) {
         const balance = await tokenContract.balanceOf(address);
-        balanceValue = ethers.utils.formatEther(balance);
+        setBalance(ethers.formatEther(balance));
       } else {
-        balanceValue = await BlockchainService.getBalance(address);
+        // Fallback to API if contract not initialized
+        const balance = await BlockchainService.getBalance(address);
+        setBalance(balance);
       }
-      
-      // Cache the result
-      balanceCache.current[cacheKey] = {
-        balance: balanceValue,
-        timestamp: now
-      };
-      
-      setBalance(balanceValue);
     } catch (error) {
       console.error('Failed to fetch balance:', error);
     }
@@ -108,8 +68,8 @@ export const Web3Provider = ({ children }) => {
     if (!signer) return;
 
     try {
-      // Get contract addresses
-      const contractAddresses = await getContractAddresses();
+      // Get contract addresses from the API
+      const contractAddresses = await BlockchainService.getContractAddresses();
       
       // Update config with contract addresses
       config.CONTRACTS.TOKEN = contractAddresses.tokenAddress;
@@ -125,7 +85,7 @@ export const Web3Provider = ({ children }) => {
       console.error('Failed to initialize contracts:', error);
       setError('Failed to initialize contracts. Please try again.');
     }
-  }, [signer, getContractAddresses]);
+  }, [signer]);
 
   // Connect wallet
   const connectWallet = useCallback(async () => {
@@ -152,8 +112,7 @@ export const Web3Provider = ({ children }) => {
           setAccount(accounts[0]);
           const signer = provider.getSigner();
           setSigner(signer);
-          // Clear balance cache when account changes
-          balanceCache.current = {};
+          initializeContracts();
         }
       });
       
@@ -162,34 +121,15 @@ export const Web3Provider = ({ children }) => {
         window.location.reload();
       });
       
+      await initializeContracts();
+      await updateBalance(account);
     } catch (error) {
       console.error('Failed to connect wallet:', error);
       setError('Failed to connect wallet. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [web3Modal, disconnectWallet]);
-
-  // Initialize contracts when signer changes
-  useEffect(() => {
-    if (signer) {
-      initializeContracts();
-    }
-  }, [signer, initializeContracts]);
-
-  // Update balance when account or contracts change
-  useEffect(() => {
-    if (account && tokenContract) {
-      updateBalance(account);
-    }
-  }, [account, tokenContract, updateBalance]);
-
-  // Auto-connect if cached provider exists
-  useEffect(() => {
-    if (web3Modal.cachedProvider) {
-      connectWallet();
-    }
-  }, [web3Modal, connectWallet]);
+  }, [web3Modal, initializeContracts, disconnectWallet, updateBalance]);
 
   // Purchase article
   const purchaseArticle = async (articleId, price) => {
@@ -199,63 +139,78 @@ export const Web3Provider = ({ children }) => {
     
     try {
       setLoading(true);
-      
-      // Convert price to wei
-      const priceInWei = ethers.utils.parseEther(price.toString());
-      
       // First approve token transfer
-      const approveTx = await tokenContract.approve(articlePurchaseContract.address, priceInWei);
+      const approveTx = await tokenContract.approve(articlePurchaseContract.address, price);
       await approveTx.wait();
       
       // Then purchase the article
       const purchaseTx = await articlePurchaseContract.buyArticle(articleId);
       const receipt = await purchaseTx.wait();
       
-      // Clear balance cache to force refresh
-      balanceCache.current = {};
+      // Record purchase in backend
+      await BlockchainService.recordPurchase({
+        articleId,
+        userAddress: account,
+        transactionHash: purchaseTx.hash,
+        price: ethers.utils.formatEther(price),
+      });
       
       // Update balance
       await updateBalance(account);
       
       return receipt;
     } catch (error) {
-      console.error('Purchase failed:', error);
+      console.error('Failed to purchase article:', error);
       throw error;
     } finally {
       setLoading(false);
     }
   };
 
-  const value = {
-    provider,
-    signer,
-    account,
-    network,
-    balance,
-    tokenContract,
-    articlePurchaseContract,
-    loading,
-    error,
-    connectWallet,
-    disconnectWallet,
-    updateBalance,
-    purchaseArticle,
-  };
+  // Check if connected to correct network
+  const checkNetwork = useCallback(async () => {
+    if (!provider) return false;
+    
+    const network = await provider.getNetwork();
+    return network.chainId === config.BLOCKCHAIN.NETWORK_ID;
+  }, [provider]);
+
+  // Auto connect if provider is cached
+  useEffect(() => {
+    if (web3Modal.cachedProvider) {
+      connectWallet();
+    }
+  }, [connectWallet, web3Modal.cachedProvider]);
 
   return (
-    <Web3Context.Provider value={value}>
+    <Web3Context.Provider
+      value={{
+        provider,
+        signer,
+        account,
+        network,
+        balance,
+        tokenContract,
+        articlePurchaseContract,
+        loading,
+        error,
+        connectWallet,
+        disconnectWallet,
+        purchaseArticle,
+        updateBalance,
+        checkNetwork,
+      }}
+    >
       {children}
     </Web3Context.Provider>
   );
 };
 
-// Hook pour utiliser le contexte Web3
+// Custom hook to use the Web3 context
 export const useWeb3 = () => {
-  const context = useContext(Web3Context);
-  if (!context) {
+  const context = React.useContext(Web3Context);
+  if (context === undefined) {
     throw new Error('useWeb3 must be used within a Web3Provider');
   }
   return context;
 };
-
-export default Web3Context;

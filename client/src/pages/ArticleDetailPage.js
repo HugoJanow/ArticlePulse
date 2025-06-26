@@ -40,7 +40,6 @@ const ArticleDetailPage = () => {
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [purchaseError, setPurchaseError] = useState(null);
   
-  // Fetch article details
   useEffect(() => {
     if (id) {
       fetchArticleById(id);
@@ -51,12 +50,20 @@ const ArticleDetailPage = () => {
   useEffect(() => {
     const checkPurchase = async () => {
       if (account && currentArticle) {
-        const purchased = await checkPurchaseStatus(currentArticle._id);
+        console.log('🔍 Checking purchase status for article:', currentArticle);
+        console.log('🔍 Using article ID:', currentArticle.id, 'instead of MongoDB _id:', currentArticle._id);
+        
+        // Use currentArticle.id (numeric) not currentArticle._id (MongoDB string)
+        const purchased = await checkPurchaseStatus(currentArticle.id);
+        console.log('🔍 Purchase status result:', purchased);
         setIsPurchased(purchased);
         
         // If purchased, fetch content
         if (purchased) {
+          console.log('✅ Article already purchased, fetching content...');
           fetchArticleContent(currentArticle._id);
+        } else {
+          console.log('❌ Article not purchased yet');
         }
       }
     };
@@ -80,17 +87,45 @@ const ArticleDetailPage = () => {
       setPurchaseLoading(true);
       setPurchaseError(null);
       
-      // Convert price to BigNumber
-      const price = ethers.utils.parseEther(currentArticle.price);
+      // Debug logs
+      console.log('🔍 Purchase Debug Info:');
+      console.log('Current Balance:', balance);
+      console.log('Article Price (raw):', currentArticle.price);
+      console.log('Account:', account);
       
-      // Check if user has enough balance
-      if (parseFloat(balance) < parseFloat(ethers.utils.formatEther(price))) {
-        setPurchaseError('Insufficient APT balance');
+      // Handle price - if it's already in Wei format, use it directly
+      let priceInWei;
+      if (currentArticle.price.length > 10) {
+        // Price is already in Wei (long number string)
+        priceInWei = ethers.BigNumber.from(currentArticle.price);
+        console.log('Price was in Wei format');
+      } else {
+        // Price is in Ether format, convert to Wei
+        priceInWei = ethers.utils.parseEther(currentArticle.price.toString());
+        console.log('Price was in Ether format, converted to Wei');
+      }
+      
+      const balanceInWei = ethers.utils.parseEther(balance || '0');
+      const priceInEther = ethers.utils.formatEther(priceInWei);
+      
+      console.log('Price in Wei:', priceInWei.toString());
+      console.log('Price in Ether:', priceInEther);
+      console.log('Balance in Wei:', balanceInWei.toString());
+      console.log('Balance in Ether:', balance);
+      console.log('Has enough balance:', balanceInWei.gte(priceInWei));
+      
+      // Check if user has enough balance using BigNumber comparison
+      if (!balanceInWei.gte(priceInWei)) {
+        const errorMsg = `Insufficient APT balance. Required: ${priceInEther} APT, Available: ${balance || '0'} APT`;
+        console.error('❌ ' + errorMsg);
+        setPurchaseError(errorMsg);
         return;
       }
       
+      console.log('✅ Balance check passed, proceeding with purchase...');
+      
       // Purchase article
-      await purchaseArticle(currentArticle.id, price);
+      await purchaseArticle(currentArticle.id, priceInWei);
       
       // Update purchase status
       setIsPurchased(true);
@@ -185,7 +220,9 @@ const ArticleDetailPage = () => {
             </Typography>
             
             <Chip 
-              label={`${ethers.utils.formatEther(currentArticle.price)} APT`} 
+              label={`${currentArticle.price?.length > 10 ? 
+                ethers.utils.formatEther(currentArticle.price) : 
+                currentArticle.price} APT`} 
               color="primary" 
               size="small" 
             />

@@ -73,6 +73,22 @@ class BlockchainService {
       throw new Error(`Failed to transfer tokens: ${error.message}`);
     }
   }
+  
+  async checkUserAccess(userAddress, articleId) {
+    try {
+      if (!this.purchaseContract) {
+        console.log(' Purchase contract not initialized');
+        return false;
+      }
+      
+      const hasAccess = await this.purchaseContract.hasAccess(userAddress, articleId);
+      console.log(` Smart contract check: User ${userAddress} has access to article ${articleId}: ${hasAccess}`);
+      return hasAccess;
+    } catch (error) {
+      console.error(`❌ Failed to check user access: ${error.message}`);
+      return false;
+    }
+  }
 }
 
 module.exports = new BlockchainService();

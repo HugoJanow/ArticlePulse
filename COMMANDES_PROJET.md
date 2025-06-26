@@ -488,7 +488,7 @@ cd client && npm start
 
 ### Pour démarrer rapidement :
 
-1. `docker start mongodb`
+1. `sudo docker start mongodb`
 2. `npx hardhat node` (dans un terminal)
 3. `npx hardhat run scripts/deploy.js --network localhost`
 4. `cd server && node index.js` (dans un terminal)

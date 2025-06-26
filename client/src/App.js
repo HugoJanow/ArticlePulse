@@ -8,9 +8,11 @@ import HomePage from './pages/HomePage';
 import ArticleListPage from './pages/ArticleListPage';
 import ArticleDetailPage from './pages/ArticleDetailPage';
 import ProfilePage from './pages/ProfilePage';
+import ArticleTest from './ArticleTest';
 
 // Components
 import ErrorBoundary from './components/ErrorBoundary';
+import PurchaseDebug from './components/PurchaseDebug';
 
 // Context Providers
 import { Web3Provider } from './context/Web3Context';
@@ -79,6 +81,8 @@ function App() {
                 <Route path="/articles" element={<ArticleListPage />} />
                 <Route path="/articles/:id" element={<ArticleDetailPage />} />
                 <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/test" element={<ArticleTest />} />
+                <Route path="/debug" element={<PurchaseDebug />} />
               </Routes>
             </Router>
           </ArticleProvider>

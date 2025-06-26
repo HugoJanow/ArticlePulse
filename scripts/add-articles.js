@@ -1,14 +1,18 @@
 const { ethers } = require("hardhat");
-const { getContractAddresses } = require("./get-addresses");
+const fs = require('fs');
+const path = require('path');
 
 async function main() {
   console.log("Adding articles to smart contract...");
   
   let purchaseAddress;
   try {
-    const addresses = getContractAddresses();
-    purchaseAddress = addresses.purchaseAddress;
+    const configPath = path.join(__dirname, '..', 'server', 'config', 'contracts.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    purchaseAddress = config.articlePurchase;
+    console.log("Using ArticlePurchase contract at:", purchaseAddress);
   } catch (error) {
+    console.error("Error reading contract config:", error.message);
     process.exit(1);
   }
   
@@ -62,7 +66,7 @@ async function main() {
       const [title, price, content, isActive] = await purchase.getArticle(i);
       console.log(`Article ${i}:`);
       console.log(`  Title: ${title}`);
-      console.log(`  Price: ${ethers.formatEther(price)} ETH`);
+      console.log(`  Price: ${ethers.formatEther(price)} AZPT`);
       console.log(`  Active: ${isActive}`);
       console.log(`  Content preview: ${content.substring(0, 50)}...`);
     }

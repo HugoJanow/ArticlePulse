@@ -10,13 +10,9 @@ const ArticleCard = ({ article }) => {
   const { account } = useWeb3();
   const [isPurchased, setIsPurchased] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // Format the price from wei to a readable format
   const formattedPrice = article?.price 
     ? `${ethers.utils.formatEther(article.price)} APT` 
     : '0 APT';
-
-  // Check if the article has been purchased
   useEffect(() => {
     const checkPurchaseStatus = async () => {
       if (account && article) {
@@ -29,7 +25,6 @@ const ArticleCard = ({ article }) => {
         }
       }
     };
-
     checkPurchaseStatus();
   }, [account, article]);
 
@@ -37,7 +32,6 @@ const ArticleCard = ({ article }) => {
     setLoading(true);
     navigate(`/articles/${article.id}`);
   };
-
   return (
     <Card 
       elevation={2}

@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback, useMemo, useRef, useContext } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ethers } from 'ethers';
 import Web3Modal from 'web3modal';
 import config from '../config';
@@ -86,7 +86,7 @@ export const Web3Provider = ({ children }) => {
       
       if (tokenContract) {
         const balance = await tokenContract.balanceOf(address);
-        balanceValue = ethers.utils.formatEther(balance);
+        balanceValue = ethers.formatEther(balance);
       } else {
         balanceValue = await BlockchainService.getBalance(address);
       }
@@ -134,8 +134,8 @@ export const Web3Provider = ({ children }) => {
       setError(null);
       
       const instance = await web3Modal.connect();
-      const provider = new ethers.providers.Web3Provider(instance);
-      const signer = provider.getSigner();
+      const provider = new ethers.BrowserProvider(instance);
+      const signer = await provider.getSigner();
       const account = await signer.getAddress();
       const network = await provider.getNetwork();
       
@@ -150,7 +150,7 @@ export const Web3Provider = ({ children }) => {
           await disconnectWallet();
         } else {
           setAccount(accounts[0]);
-          const signer = provider.getSigner();
+          const signer = await provider.getSigner();
           setSigner(signer);
           // Clear balance cache when account changes
           balanceCache.current = {};
@@ -201,10 +201,10 @@ export const Web3Provider = ({ children }) => {
       setLoading(true);
       
       // Convert price to wei
-      const priceInWei = ethers.utils.parseEther(price.toString());
+      const priceInWei = ethers.parseEther(price.toString());
       
       // First approve token transfer
-      const approveTx = await tokenContract.approve(articlePurchaseContract.address, priceInWei);
+      const approveTx = await tokenContract.approve(articlePurchaseContract.target, priceInWei);
       await approveTx.wait();
       
       // Then purchase the article
@@ -247,15 +247,6 @@ export const Web3Provider = ({ children }) => {
       {children}
     </Web3Context.Provider>
   );
-};
-
-// Hook pour utiliser le contexte Web3
-export const useWeb3 = () => {
-  const context = useContext(Web3Context);
-  if (!context) {
-    throw new Error('useWeb3 must be used within a Web3Provider');
-  }
-  return context;
 };
 
 export default Web3Context;

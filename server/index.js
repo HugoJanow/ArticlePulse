@@ -8,28 +8,41 @@ require('dotenv').config();
 const Article = require('./models/Article');
 const Purchase = require('./models/Purchase');
 const blockchainService = require('./services/blockchain');
-const modernEncryption = require('./utils/modernEncryption');
 
 // Fonction pour déchiffrer le contenu
-function decryptContent(encryptedContent, key) {
+function decryptContent(encryptedContent, encryptionKey) {
   try {
-    // Essayer d'abord avec le nouveau système de chiffrement
-    if (encryptedContent.includes(':')) {
-      return modernEncryption.decrypt(encryptedContent, key);
-    } else {
-      // Fallback vers l'ancienne méthode pour les données existantes
-      console.warn('⚠️  Utilisation du déchiffrement legacy pour les données existantes');
-      return modernEncryption.decryptLegacy(encryptedContent, key);
+    if (!encryptedContent || !encryptionKey) {
+      return null;
     }
+    
+    const decipher = crypto.createDecipher('aes-256-cbc', encryptionKey);
+    let decrypted = decipher.update(encryptedContent, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
   } catch (error) {
-    console.error('Erreur de déchiffrement:', error);
+    console.error('Error decrypting content:', error);
     return null;
   }
 }
 
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://172.18.85.157:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
+
+app.use((req, res, next) => {
+  if (!req.path.includes('/contracts')) {
+    console.log(`📡 ${req.method} ${req.path} - ${new Date().toISOString()}`);
+  }
+  next();
+});
 
 // Connexion MongoDB
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/articlepulse')
@@ -39,9 +52,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/articlepu
   console.error('❌ MongoDB connection error:', error);
 });
 
-// 📚 ROUTES ARTICLES
 
-// Obtenir tous les articles (sans contenu chiffré)
 app.get('/api/articles', async (req, res) => {
   try {
     const articles = await Article.find({}, '-encryptedContent -encryptionKey');
@@ -51,21 +62,15 @@ app.get('/api/articles', async (req, res) => {
   }
 });
 
-// Obtenir un article spécifique (sans contenu chiffré)
 app.get('/api/articles/:id', async (req, res) => {
   try {
     let article;
-    
-    // Essayer d'abord avec _id MongoDB
     if (mongoose.Types.ObjectId.isValid(req.params.id)) {
       article = await Article.findById(req.params.id, '-encryptedContent -encryptionKey');
     }
-    
-    // Si pas trouvé, essayer avec le champ id numérique
     if (!article) {
       article = await Article.findOne({ id: req.params.id }, '-encryptedContent -encryptionKey');
     }
-    
     if (!article) {
       return res.status(404).json({ error: 'Article not found' });
     }
@@ -75,7 +80,6 @@ app.get('/api/articles/:id', async (req, res) => {
   }
 });
 
-// Créer un nouvel article (admin)
 app.post('/api/articles', async (req, res) => {
   try {
     const article = new Article(req.body);
@@ -86,7 +90,6 @@ app.post('/api/articles', async (req, res) => {
   }
 });
 
-// Endpoint temporaire avec données hardcodées (pour contourner le problème MongoDB)
 app.get('/api/articles-demo', (req, res) => {
   const demoArticles = [
     {
@@ -118,29 +121,23 @@ app.get('/api/articles-demo', (req, res) => {
     }
   ];
   
-  console.log('📚 Returning demo articles');
+  console.log(' Returning demo articles');
   res.json(demoArticles);
 });
 
-// 🔓 NOUVEAU: Endpoint de test pour déchiffrer le contenu d'un article
 app.get('/api/articles/:id/decrypt-test', async (req, res) => {
   try {
     const article = await Article.findOne({ id: req.params.id });
     if (!article) {
       return res.status(404).json({ error: 'Article not found' });
     }
-
     if (!article.encryptedContent || !article.encryptionKey) {
       return res.status(404).json({ error: 'No encrypted content available for this article' });
     }
-
-    // Déchiffrer le contenu (en production, ceci serait sécurisé)
     const decryptedContent = decryptContent(article.encryptedContent, article.encryptionKey);
-    
     if (!decryptedContent) {
       return res.status(500).json({ error: 'Failed to decrypt content' });
     }
-
     res.json({
       id: article.id,
       title: article.title,
@@ -153,36 +150,24 @@ app.get('/api/articles/:id/decrypt-test', async (req, res) => {
   }
 });
 
-// 🔓 Endpoint sécurisé pour lire le contenu d'un article acheté
 app.get('/api/content/:id/:userAddress', async (req, res) => {
   try {
     const { id, userAddress } = req.params;
-    
-    // Vérifier que l'article existe
     const article = await Article.findOne({ id: parseInt(id) });
     if (!article) {
       return res.status(404).json({ error: 'Article not found' });
     }
-
-    // TODO: En production, vérifier via smart contract que l'utilisateur a acheté l'article
-    // Pour l'instant, on simule l'accès autorisé
-    const hasAccess = true; // await purchaseContract.hasAccess(userAddress, id);
-    
+    const hasAccess = true;
     if (!hasAccess) {
       return res.status(403).json({ error: 'Access denied. Please purchase this article first.' });
     }
-
     if (!article.encryptedContent || !article.encryptionKey) {
       return res.status(404).json({ error: 'No encrypted content available for this article' });
     }
-
-    // Déchiffrer le contenu
     const decryptedContent = decryptContent(article.encryptedContent, article.encryptionKey);
-    
     if (!decryptedContent) {
       return res.status(500).json({ error: 'Failed to decrypt content' });
     }
-
     res.json({
       id: article.id,
       title: article.title,
@@ -195,60 +180,63 @@ app.get('/api/content/:id/:userAddress', async (req, res) => {
   }
 });
 
-// Route POST pour récupérer le contenu d'un article (compatible avec le frontend)
 app.post('/api/articles/:id/content', async (req, res) => {
   try {
     const { id } = req.params;
     const { userAddress } = req.body;
-    
-    // Vérifier que l'article existe (support _id MongoDB et id numérique)
     let article;
     if (mongoose.Types.ObjectId.isValid(id)) {
       article = await Article.findById(id);
     } else {
       article = await Article.findOne({ id: parseInt(id) });
     }
-    
     if (!article) {
       return res.status(404).json({ error: 'Article not found' });
     }
-
-    // Vérifier si l'utilisateur a acheté l'article
-    console.log(`🔍 Vérification d'achat pour l'article ${id} par l'utilisateur ${userAddress}`);
-    
+    console.log(` Vérification d'achat pour l'article ${id} par l'utilisateur ${userAddress}`);
     let hasAccess = false;
     try {
-      const purchase = await Purchase.findOne({
-        articleId: article._id.toString(),
-        userAddress: userAddress.toLowerCase() // Conversion en minuscules ici aussi !
-      });
-      
-      hasAccess = !!purchase;
-      console.log(`📝 Résultat de vérification: ${hasAccess ? 'Accès autorisé' : 'Accès refusé'}`);
-      
-      if (purchase) {
-        console.log(`💰 Achat trouvé: ${purchase.transactionHash} le ${purchase.purchaseDate}`);
+      console.log(' Chargement de la config des contrats...');
+      const contractsConfig = require('./config/contracts.json');
+      const { ethers } = require('ethers');
+      const provider = new ethers.JsonRpcProvider('http://localhost:8545');
+      const ArticlePurchaseABI = require('../artifacts/contracts/ArticlePurchase.sol/ArticlePurchase.json').abi;
+      const purchaseContract = new ethers.Contract(
+        contractsConfig.articlePurchase,
+        ArticlePurchaseABI,
+        provider
+      );
+      const articleId = article.id || parseInt(id);
+      hasAccess = await purchaseContract.hasAccess(userAddress, articleId);
+      console.log(` Résultat de vérification smart contract: ${hasAccess ? 'Accès autorisé' : 'Accès refusé'}`);
+      if (!hasAccess) {
+        console.log(' Tentative de vérification via base de données...');
+        const purchase = await Purchase.findOne({
+          articleId: article._id.toString(),
+          userAddress: userAddress.toLowerCase()
+        });
+        hasAccess = !!purchase;
+        console.log(` Résultat de vérification BDD: ${hasAccess ? 'Accès autorisé' : 'Accès refusé'}`);
+        if (purchase) {
+          console.log(` Achat trouvé en BDD: ${purchase.transactionHash} le ${purchase.purchaseDate}`);
+        }
+      } else {
+        console.log(` Accès confirmé via smart contract pour article ${articleId}`);
       }
     } catch (error) {
-      console.error('❌ Erreur lors de la vérification d\'achat:', error);
+      console.error(' Erreur lors de la vérification d\'achat:', error);
       hasAccess = false;
     }
-    
     if (!hasAccess) {
       return res.status(403).json({ error: 'Access denied. Please purchase this article first.' });
     }
-
     if (!article.encryptedContent || !article.encryptionKey) {
       return res.status(404).json({ error: 'No encrypted content available for this article' });
     }
-
-    // Déchiffrer le contenu
     const decryptedContent = decryptContent(article.encryptedContent, article.encryptionKey);
-    
     if (!decryptedContent) {
       return res.status(500).json({ error: 'Failed to decrypt content' });
     }
-
     res.json({
       content: decryptedContent,
       encryptedContent: article.encryptedContent
@@ -258,24 +246,17 @@ app.post('/api/articles/:id/content', async (req, res) => {
   }
 });
 
-// 💰 ROUTES PURCHASES
-
-// Enregistrer un achat
 app.post('/api/purchases', async (req, res) => {
   try {
     const { articleId, userAddress, transactionHash, price } = req.body;
     
-    console.log('📝 Recording purchase:', { articleId, userAddress, transactionHash, price });
-    
-    // Vérifier que tous les champs requis sont présents
+    console.log(' Recording purchase:', { articleId, userAddress, transactionHash, price });
     if (!articleId || !userAddress || !transactionHash || !price) {
       return res.status(400).json({ 
         success: false,
         error: 'Missing required fields: articleId, userAddress, transactionHash, price' 
       });
     }
-    
-    // Créer l'enregistrement d'achat
     const purchase = new Purchase({
       articleId,
       userAddress: userAddress.toLowerCase(),
@@ -285,17 +266,16 @@ app.post('/api/purchases', async (req, res) => {
     
     await purchase.save();
     
-    console.log('✅ Purchase recorded successfully');
+    console.log(' Purchase recorded successfully');
     res.status(201).json({ 
       success: true, 
       message: 'Purchase recorded successfully',
       purchase: purchase
     });
   } catch (error) {
-    console.error('❌ Error recording purchase:', error);
+    console.error(' Error recording purchase:', error);
     
     if (error.code === 11000) {
-      // Erreur de duplicata
       return res.status(409).json({ 
         success: false,
         error: 'Purchase already recorded' 
@@ -309,34 +289,30 @@ app.post('/api/purchases', async (req, res) => {
   }
 });
 
-// Obtenir les achats d'un utilisateur
 app.get('/api/purchases/:userAddress', async (req, res) => {
   try {
     const { userAddress } = req.params;
     
-    console.log('🔍 Getting purchases for user:', userAddress);
+    console.log(' Getting purchases for user:', userAddress);
     
     const purchases = await Purchase.find({ 
       userAddress: userAddress.toLowerCase() 
     }).sort({ purchaseDate: -1 });
     
-    // Retourner seulement les IDs des articles achetés
     const articleIds = purchases.map(purchase => purchase.articleId);
-    
-    console.log('📚 Found purchases:', articleIds);
+    console.log(' Found purchases:', articleIds);
     res.json(articleIds);
   } catch (error) {
-    console.error('❌ Error getting purchases:', error);
+    console.error(' Error getting purchases:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Vérifier si un utilisateur a acheté un article
 app.post('/api/purchases/verify', async (req, res) => {
   try {
     const { articleId, userAddress } = req.body;
     
-    console.log('🔍 Verifying purchase:', { articleId, userAddress });
+    console.log(' Verifying purchase:', { articleId, userAddress });
     
     const purchase = await Purchase.findOne({
       articleId,
@@ -345,7 +321,7 @@ app.post('/api/purchases/verify', async (req, res) => {
     
     const isPurchased = !!purchase;
     
-    console.log('📝 Purchase verification result:', isPurchased);
+    console.log(' Purchase verification result:', isPurchased);
     res.json({ isPurchased });
   } catch (error) {
     console.error('❌ Error verifying purchase:', error);
@@ -353,25 +329,20 @@ app.post('/api/purchases/verify', async (req, res) => {
   }
 });
 
-// 💰 ROUTES BLOCKCHAIN
-
-// Obtenir les adresses des contrats
 app.get('/api/contracts', (req, res) => {
+  const contractsConfig = require('./config/contracts.json');
   res.json({
-    tokenAddress: blockchainService.tokenAddress,
-    purchaseAddress: blockchainService.purchaseAddress
+    tokenAddress: contractsConfig.token,
+    purchaseAddress: contractsConfig.articlePurchase
   });
 });
 
-// Vérifier l'accès à un article
 app.get('/api/access/:articleId/:userAddress', async (req, res) => {
   try {
     const { articleId, userAddress } = req.params;
-    
     if (!blockchainService.purchaseContract) {
       return res.status(500).json({ error: 'Blockchain service not initialized' });
     }
-    
     const hasAccess = await blockchainService.checkAccess(userAddress, articleId);
     res.json({ hasAccess });
   } catch (error) {
@@ -379,7 +350,6 @@ app.get('/api/access/:articleId/:userAddress', async (req, res) => {
   }
 });
 
-// Obtenir le solde de tokens d'un utilisateur
 app.get('/api/balance/:address', async (req, res) => {
   try {
     const balance = await blockchainService.getTokenBalance(req.params.address);
@@ -389,10 +359,9 @@ app.get('/api/balance/:address', async (req, res) => {
   }
 });
 
-// Test simple de MongoDB
 app.get('/api/test-mongo', async (req, res) => {
   try {
-    console.log('🔍 Testing MongoDB connection...');
+    console.log('  Testing MongoDB connection...');
     const isConnected = mongoose.connection.readyState === 1;
     console.log('MongoDB connected:', isConnected);
     
@@ -420,10 +389,9 @@ app.get('/api/test-mongo', async (req, res) => {
   }
 });
 
-// 🏠 ROUTE PRINCIPALE
 app.get('/', (req, res) => {
   res.json({
-    message: '🚀 ArticlePulse API Server',
+    message: ' ArticlePulse API Server',
     version: '1.0.0',
     endpoints: [
       'GET /api/articles',
@@ -436,11 +404,10 @@ app.get('/', (req, res) => {
   });
 });
 
-// Démarrage du serveur
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`🌐 Server listening on port ${PORT}`);
-  console.log(`📱 API available at http://localhost:${PORT}`);
+  console.log(` Server listening on port ${PORT}`);
+  console.log(` API available at http://localhost:${PORT}`);
 });
 
 module.exports = app;
